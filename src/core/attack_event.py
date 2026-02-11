@@ -10,6 +10,8 @@ from typing import List
 from uuid import UUID
 from datetime import datetime
 
+from .attack_types import AttackType, SeverityLevel
+
 
 @dataclass(frozen=True)
 class AttackEvent:
@@ -17,7 +19,7 @@ class AttackEvent:
     attack_id: UUID
 
     # Classification
-    attack_type: str  # Example: "SSH_BRUTE_FORCE"
+    attack_type: AttackType
 
     # Time Window
     start_time: datetime
@@ -33,4 +35,4 @@ class AttackEvent:
     # Analysis
     frequency: int
     confidence: float
-    severity: str
+    severity: SeverityLevel
