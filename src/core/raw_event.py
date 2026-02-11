@@ -10,14 +10,16 @@ from typing import Optional
 from uuid import UUID
 from datetime import datetime
 
+from .event_types import SourceType, EventType
+
 
 @dataclass(frozen=True)
 class RawEvent:
     # Mandatory Fields
     event_id: UUID
     timestamp: datetime
-    source_type: str
-    event_type: str
+    source_type: SourceType
+    event_type: EventType
     raw_message: str
     host: str
     log_source: str
