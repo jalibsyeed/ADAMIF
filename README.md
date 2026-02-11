@@ -4,13 +4,6 @@ Attack Detection, Analysis, and Malware Intelligence Framework (ADAMIF)
 
 ADAMIF is a multi-phase cybersecurity project designed to simulate a SOC-style defensive security platform. The system evolves incrementally from log-based attack detection to intelligence-driven correlation and controlled automated response.
 
-The project follows strict architectural discipline:
-- Data-first design
-- Explainable detection logic
-- Evidence-based analysis
-- Clear separation of detection, intelligence, and response layers
-- No offensive or exploit-development functionality
-
 ---
 
 ## Project Phases
@@ -38,9 +31,11 @@ The project follows strict architectural discipline:
 
 ## Design Philosophy
 
-ADAMIF is built as one cohesive system.
-Each phase extends the previous phase without rewriting core components.
-All detection and analysis must be explainable and defensible.
+- Data-first architecture
+- Explainable detection logic
+- Evidence-based analysis
+- Strict separation of detection, intelligence, and response layers
+- No offensive or exploit-development functionality
 
 ---
 
