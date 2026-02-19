@@ -1,8 +1,8 @@
 """
-RawEvent Model
+RawEvent data model.
 
-Represents a single atomic fact observed from system telemetry.
-This class must contain no interpretation, severity, or attack classification.
+Represents a single immutable atomic fact extracted from telemetry.
+No interpretation, no severity, no attack classification.
 """
 
 from dataclasses import dataclass
@@ -34,7 +34,6 @@ class RawEvent:
     port: Optional[int] = None
 
     def __post_init__(self):
-        # Validate mandatory text fields
         if not self.raw_message:
             raise ValueError("raw_message cannot be empty")
 
@@ -43,16 +42,3 @@ class RawEvent:
 
         if not self.log_source:
             raise ValueError("log_source cannot be empty")
-
-        # Validate type integrity
-        if not isinstance(self.event_id, UUID):
-            raise TypeError("event_id must be a UUID")
-
-        if not isinstance(self.timestamp, datetime):
-            raise TypeError("timestamp must be a datetime")
-
-        if not isinstance(self.source_type, SourceType):
-            raise TypeError("source_type must be a SourceType enum")
-
-        if not isinstance(self.event_type, EventType):
-            raise TypeError("event_type must be an EventType enum")
