@@ -41,3 +41,41 @@
 - No persistent state between executions.
 
 These are intentional design constraints to preserve clean architectural layering for Phase 2.
+---
+
+## Additional Phase 1 Architectural Limitations
+
+### 1. Overlapping Detection Events
+
+In Phase 1, detection engines operate independently.
+
+This means a single attacker IP may trigger multiple AttackEvents
+(e.g., SSH_BRUTE_FORCE and PASSWORD_SPRAY) within the same time window.
+
+These events are not merged or correlated in Phase 1.
+
+Rationale:
+Detection and correlation are intentionally separated.
+Alert merging, deduplication, and incident-level grouping
+will be introduced in Phase 2 (Intelligence & Correlation Layer).
+
+---
+
+### 2. No Cross-Engine Correlation
+
+SSHDetectionEngine and AuthBehaviorDetectionEngine
+do not share state or merge outputs.
+
+Each rule emits its own AttackEvent independently.
+
+This preserves deterministic replay and strict layer separation.
+
+---
+
+### 3. Single-Window Emission per Rule
+
+Each detection rule emits only the first qualifying window
+per source IP per run.
+
+Multi-wave detection and historical tracking
+will be introduced in Phase 2.
