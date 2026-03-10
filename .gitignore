@@ -207,3 +207,25 @@ marimo/_lsp/
 __marimo__/
 # ADAMIF runtime data
 data/raw_events.jsonl
+
+# local scripts
+*.sh
+
+# temp files
+*.txt
+
+# datasets
+data/
+
+# python cache
+__pycache__/
+*.pyc
+
+# virtual environment
+venv/
+
+# local experiments
+test_ingestion_lab.py
+test_ingestion_soc.py
+test_replay.py
+test_reporting.py
