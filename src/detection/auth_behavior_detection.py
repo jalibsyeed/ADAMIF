@@ -1,13 +1,14 @@
 """
-Authentication behavior detection engine.
+Authentication Behavior Detection Engine
 
 Detects:
 - Password spraying
 - Username enumeration
 - Low-and-slow brute force
 
-Operates ONLY on RawEvent objects.
-Returns AttackEvent objects.
+Design Limitation (Phase 1):
+This engine emits only one AttackEvent per rule per IP per run.
+Multi-wave correlation and alert merging are deferred to Phase 2.
 """
 
 from collections import defaultdict
@@ -59,9 +60,9 @@ class AuthBehaviorDetectionEngine:
 
         return attacks
 
-    # ----------------------------
-    # Detection Implementations
-    # ----------------------------
+    # -------------------------------------------------
+    # Password Spray Detection
+    # -------------------------------------------------
 
     def _detect_password_spray(self, ip: str, events: List[RawEvent]):
         failures = [
@@ -71,9 +72,11 @@ class AuthBehaviorDetectionEngine:
 
         for i in range(len(failures)):
             window = [failures[i]]
+
             for j in range(i + 1, len(failures)):
                 if failures[j].timestamp - failures[i].timestamp <= timedelta(
-                        minutes=self.SPRAY_WINDOW_MINUTES):
+                    minutes=self.SPRAY_WINDOW_MINUTES
+                ):
                     window.append(failures[j])
                 else:
                     break
@@ -81,15 +84,29 @@ class AuthBehaviorDetectionEngine:
             distinct_users = {e.username for e in window}
 
             if len(distinct_users) >= self.SPRAY_USER_THRESHOLD:
+                notes = (
+                    f"Password spray detected: "
+                    f"{len(window)} failed attempts across "
+                    f"{len(distinct_users)} distinct usernames "
+                    f"within {self.SPRAY_WINDOW_MINUTES} minutes "
+                    f"from IP {ip}. "
+                    f"Indicates distributed credential guessing."
+                )
+
                 return self._build_attack(
                     ip,
                     window,
                     AttackType.PASSWORD_SPRAY,
                     SeverityLevel.HIGH,
-                    confidence=0.85
+                    confidence=0.85,
+                    notes=notes
                 )
 
         return None
+
+    # -------------------------------------------------
+    # Username Enumeration Detection
+    # -------------------------------------------------
 
     def _detect_enumeration(self, ip: str, events: List[RawEvent]):
         invalids = [
@@ -99,23 +116,38 @@ class AuthBehaviorDetectionEngine:
 
         for i in range(len(invalids)):
             window = [invalids[i]]
+
             for j in range(i + 1, len(invalids)):
                 if invalids[j].timestamp - invalids[i].timestamp <= timedelta(
-                        minutes=self.ENUM_WINDOW_MINUTES):
+                    minutes=self.ENUM_WINDOW_MINUTES
+                ):
                     window.append(invalids[j])
                 else:
                     break
 
             if len(window) >= self.ENUM_THRESHOLD:
+                notes = (
+                    f"Username enumeration detected: "
+                    f"{len(window)} invalid user attempts "
+                    f"within {self.ENUM_WINDOW_MINUTES} minutes "
+                    f"from IP {ip}. "
+                    f"Suggests account discovery activity."
+                )
+
                 return self._build_attack(
                     ip,
                     window,
                     AttackType.USERNAME_ENUMERATION,
                     SeverityLevel.MEDIUM,
-                    confidence=0.8
+                    confidence=0.80,
+                    notes=notes
                 )
 
         return None
+
+    # -------------------------------------------------
+    # Slow Brute Force Detection
+    # -------------------------------------------------
 
     def _detect_slow_brute(self, ip: str, events: List[RawEvent]):
         failures = [
@@ -125,29 +157,50 @@ class AuthBehaviorDetectionEngine:
 
         for i in range(len(failures)):
             window = [failures[i]]
+
             for j in range(i + 1, len(failures)):
                 if failures[j].timestamp - failures[i].timestamp <= timedelta(
-                        minutes=self.SLOW_BRUTE_WINDOW_MINUTES):
+                    minutes=self.SLOW_BRUTE_WINDOW_MINUTES
+                ):
                     window.append(failures[j])
                 else:
                     break
 
             if len(window) >= self.SLOW_BRUTE_THRESHOLD:
+                notes = (
+                    f"Low-and-slow brute-force detected: "
+                    f"{len(window)} authentication failures "
+                    f"within {self.SLOW_BRUTE_WINDOW_MINUTES} minutes "
+                    f"from IP {ip}. "
+                    f"Pattern suggests evasion attempt."
+                )
+
                 return self._build_attack(
                     ip,
                     window,
-                    AttackType.SSH_BRUTE_FORCE,
-                    SeverityLevel.HIGH,
-                    confidence=0.9
+                    AttackType.ABNORMAL_AUTH_PATTERN,
+                    SeverityLevel.MEDIUM,
+                    confidence=0.75,
+                    notes=notes
                 )
 
         return None
 
-    # ----------------------------
+    # -------------------------------------------------
     # Attack Builder
-    # ----------------------------
+    # -------------------------------------------------
 
-    def _build_attack(self, ip, window, attack_type, severity, confidence):
+    def _build_attack(
+        self,
+        ip,
+        window,
+        attack_type,
+        severity,
+        confidence,
+        notes
+    ):
+        window.sort(key=lambda e: e.timestamp)
+
         return AttackEvent(
             attack_id=uuid4(),
             attack_type=attack_type,
@@ -158,5 +211,6 @@ class AuthBehaviorDetectionEngine:
             related_event_ids=[e.event_id for e in window],
             frequency=len(window),
             confidence=confidence,
-            severity=severity
+            severity=severity,
+            analysis_notes=notes
         )

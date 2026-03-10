@@ -1,115 +1,111 @@
 """
-PHASE 1 LIMITATION NOTICE:
+Design Limitation (Phase 1):
 
-This detection engine emits only ONE AttackEvent per IP
-per detection run.
+This detection engine emits only ONE AttackEvent per source IP
+per detection execution.
 
 If multiple independent brute-force waves occur from the same IP
-within the same dataset, only the first qualifying window
-will generate an AttackEvent.
+within the same dataset, only the first qualifying window will
+generate an AttackEvent.
 
-Multi-wave detection and incident correlation are intentionally
-deferred to Phase 2 (Correlation & Intelligence Layer).
+Multi-wave detection, historical tracking, and cross-rule
+correlation are intentionally deferred to Phase 2
+(Correlation & Intelligence Layer).
 """
 """
-SSH brute-force detection engine.
+SSH Detection Engine
 
-Operates ONLY on RawEvent objects.
-Produces AttackEvent objects.
+Responsible for detecting:
+- Burst brute-force attempts
+- Slow brute-force attempts
 
-No log parsing.
-No mutation.
-No severity guessing.
-No ML.
+Operates strictly on RawEvent objects.
+No ingestion logic.
+No correlation.
 """
 
-from collections import defaultdict
+from typing import List, Dict
 from datetime import timedelta
-from typing import List
 from uuid import uuid4
 
 from src.core.raw_event import RawEvent
 from src.core.attack_event import AttackEvent
 from src.core.attack_types import AttackType, SeverityLevel
+from src.core.event_types import EventType
 
 
 class SSHDetectionEngine:
+    """
+    Rule-based SSH brute-force detection engine.
+    """
 
+    # Detection thresholds
     BURST_THRESHOLD = 5
     BURST_WINDOW_SECONDS = 60
 
     SLOW_THRESHOLD = 10
-    SLOW_WINDOW_SECONDS = 300  # 5 minutes
+    SLOW_WINDOW_SECONDS = 300
 
     def detect(self, events: List[RawEvent]) -> List[AttackEvent]:
         """
-        Detect brute-force patterns in provided RawEvents.
+        Detect brute-force patterns grouped by source IP.
         """
+        ip_groups: Dict[str, List[RawEvent]] = {}
 
-        # Sort events by timestamp
-        events = sorted(events, key=lambda e: e.timestamp)
+        for event in events:
+            if event.event_type == EventType.AUTH_FAILURE and event.source_ip:
+                ip_groups.setdefault(event.source_ip, []).append(event)
 
-        # Filter only AUTH_FAILURE with valid IP
-        failure_events = [
-            e for e in events
-            if e.event_type.name == "AUTH_FAILURE" and e.source_ip is not None
-        ]
+        attacks: List[AttackEvent] = []
 
-        # Group by source_ip
-        grouped = defaultdict(list)
-        for event in failure_events:
-            grouped[event.source_ip].append(event)
+        for ip, ip_events in ip_groups.items():
+            ip_events.sort(key=lambda e: e.timestamp)
 
-        attack_events: List[AttackEvent] = []
-
-        for ip, ip_events in grouped.items():
-            attack = self._detect_for_ip(ip, ip_events)
-            if attack:
-                attack_events.append(attack)
-
-        return attack_events
-
-    def _detect_for_ip(self, ip: str, events: List[RawEvent]) -> AttackEvent | None:
-        """
-        Apply burst and slow detection rules for a single IP.
-        """
-
-        # Burst Rule
-        burst_attack = self._sliding_window_detect(
-            events,
-            threshold=self.BURST_THRESHOLD,
-            window_seconds=self.BURST_WINDOW_SECONDS
-        )
-
-        if burst_attack:
-            return self._build_attack_event(
-                ip,
-                burst_attack,
-                severity=SeverityLevel.HIGH,
-                confidence=0.9
+            burst = self._sliding_window_detect(
+                ip_events,
+                self.BURST_THRESHOLD,
+                self.BURST_WINDOW_SECONDS
             )
 
-        # Slow Rule (only if burst not triggered)
-        slow_attack = self._sliding_window_detect(
-            events,
-            threshold=self.SLOW_THRESHOLD,
-            window_seconds=self.SLOW_WINDOW_SECONDS
-        )
+            if burst:
+                attacks.append(
+                    self._build_attack_event(
+                        ip,
+                        burst,
+                        severity=SeverityLevel.HIGH,
+                        confidence=0.90,
+                        detection_type="burst"
+                    )
+                )
+                continue
 
-        if slow_attack:
-            return self._build_attack_event(
-                ip,
-                slow_attack,
-                severity=SeverityLevel.MEDIUM,
-                confidence=0.75
+            slow = self._sliding_window_detect(
+                ip_events,
+                self.SLOW_THRESHOLD,
+                self.SLOW_WINDOW_SECONDS
             )
 
-        return None
+            if slow:
+                attacks.append(
+                    self._build_attack_event(
+                        ip,
+                        slow,
+                        severity=SeverityLevel.MEDIUM,
+                        confidence=0.75,
+                        detection_type="slow"
+                    )
+                )
 
-    def _sliding_window_detect(self, events: List[RawEvent], threshold: int, window_seconds: int):
+        return attacks
+
+    def _sliding_window_detect(
+        self,
+        events: List[RawEvent],
+        threshold: int,
+        window_seconds: int
+    ) -> List[RawEvent] | None:
         """
         Sliding window detection logic.
-        Returns list of events if threshold met, else None.
         """
 
         for i in range(len(events)):
@@ -132,11 +128,30 @@ class SSHDetectionEngine:
         ip: str,
         evidence_events: List[RawEvent],
         severity: SeverityLevel,
-        confidence: float
+        confidence: float,
+        detection_type: str
     ) -> AttackEvent:
 
         start_time = evidence_events[0].timestamp
         end_time = evidence_events[-1].timestamp
+        frequency = len(evidence_events)
+
+        if detection_type == "burst":
+            notes = (
+                f"Detected burst brute-force pattern: "
+                f"{frequency} failed authentication attempts "
+                f"within {self.BURST_WINDOW_SECONDS} seconds "
+                f"from source IP {ip}. "
+                f"Confidence elevated due to high event density."
+            )
+        else:
+            notes = (
+                f"Detected slow brute-force pattern: "
+                f"{frequency} failed authentication attempts "
+                f"within {self.SLOW_WINDOW_SECONDS} seconds "
+                f"from source IP {ip}. "
+                f"Pattern indicates potential evasion attempt."
+            )
 
         return AttackEvent(
             attack_id=uuid4(),
@@ -146,7 +161,8 @@ class SSHDetectionEngine:
             source_ip=ip,
             target_service="sshd",
             related_event_ids=[e.event_id for e in evidence_events],
-            frequency=len(evidence_events),
+            frequency=frequency,
             confidence=confidence,
-            severity=severity
+            severity=severity,
+            analysis_notes=notes
         )

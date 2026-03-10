@@ -3,6 +3,13 @@ AttackEvent Model
 
 Represents an interpreted security-relevant behavior
 derived from one or more RawEvent instances.
+
+This model is immutable and must contain:
+- Classification
+- Time window
+- Evidence linkage
+- Quantitative metrics
+- Structured reasoning (analysis_notes)
 """
 
 from dataclasses import dataclass
@@ -32,31 +39,38 @@ class AttackEvent:
     # Evidence
     related_event_ids: List[UUID]
 
-    # Analysis
+    # Analysis Metrics
     frequency: int
     confidence: float
     severity: SeverityLevel
 
+    # Structured reasoning (NEW — Phase 1 explainability enhancement)
+    analysis_notes: str
+
     def __post_init__(self):
-        # Validate time window
+        # Time validation
         if self.end_time < self.start_time:
             raise ValueError("end_time cannot be earlier than start_time")
 
-        # Validate frequency
+        # Frequency validation
         if self.frequency <= 0:
             raise ValueError("frequency must be greater than 0")
 
-        # Validate confidence range
+        # Confidence validation
         if not (0.0 <= self.confidence <= 1.0):
             raise ValueError("confidence must be between 0.0 and 1.0")
 
-        # Validate related events
+        # Evidence validation
         if not self.related_event_ids:
             raise ValueError("AttackEvent must reference at least one RawEvent")
 
-        # Validate types
+        # Enum validation
         if not isinstance(self.attack_type, AttackType):
             raise TypeError("attack_type must be an AttackType enum")
 
         if not isinstance(self.severity, SeverityLevel):
             raise TypeError("severity must be a SeverityLevel enum")
+
+        # Reasoning validation
+        if not self.analysis_notes or not self.analysis_notes.strip():
+            raise ValueError("analysis_notes cannot be empty")

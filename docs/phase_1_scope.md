@@ -79,3 +79,31 @@ per source IP per run.
 
 Multi-wave detection and historical tracking
 will be introduced in Phase 2.
+----------------------------------------------------------------------
+ARCHITECTURAL NOTE – PRESENTATION VS DETECTION BOUNDARY
+----------------------------------------------------------------------
+
+In Phase 1, contextual enrichment logic (MITRE mapping, IP classification,
+risk commentary, impact reasoning) is implemented strictly inside the
+ReportGenerator presentation layer.
+
+This enrichment logic:
+- Does NOT influence detection decisions
+- Does NOT modify AttackEvent objects
+- Does NOT alter confidence scores
+- Does NOT impact severity classification
+- Does NOT participate in threshold evaluation
+
+All detection decisions are made exclusively within detection engines.
+
+The reporting layer is a pure presentation and contextual augmentation layer.
+
+Future phases (Correlation & Intelligence Layer) must NOT migrate
+presentation-based contextual logic into detection engines unless
+explicit architectural redesign is documented.
+
+This boundary preserves:
+- Deterministic replay integrity
+- Modular separation of concerns
+- Prevention of duplicated intelligence logic
+- Predictable detection behavior
